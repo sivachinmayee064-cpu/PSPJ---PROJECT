@@ -1,0 +1,400 @@
+import java.io.BufferedReader;
+import java.io.BufferedWriter;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.List;
+import java.util.Scanner;
+
+public class Main {
+
+    static Path questionFile = Path.of("questions.txt");
+    static Path resultFile = Path.of("exam_results.txt");
+    static Path reportFile = Path.of("leaderboard_report.txt");
+
+    // Question class represents one quiz question.
+    static class Question implements Comparable<Question> {
+        String difficulty;
+        String question;
+        String answer;
+
+        Question(String difficulty, String question, String answer) {
+            this.difficulty = difficulty.trim();
+            this.question = question.trim();
+            this.answer = answer.trim();
+        }
+
+        // Comparable: sort questions by difficulty.
+        @Override
+        public int compareTo(Question other) {
+            return this.difficulty.compareToIgnoreCase(other.difficulty);
+        }
+    }
+
+    // Result class stores a student's examination result.
+    static class Result {
+        String name;
+        int score;
+        int total;
+
+        Result(String name, int score, int total) {
+            this.name = name;
+            this.score = score;
+            this.total = total;
+        }
+    }
+
+    public static void main(String[] args) {
+
+        createQuestionFile();
+
+        List<Question> questions = loadQuestions();
+
+        if (questions.isEmpty()) {
+            System.out.println("No valid questions available.");
+            return;
+        }
+
+        try (Scanner sc = new Scanner(System.in)) {
+
+            System.out.println("================================");
+            System.out.println("   ADAPTIVE QUIZ AND EXAM ENGINE");
+            System.out.println("================================");
+
+            System.out.print("Enter student name: ");
+            String name = sc.nextLine().trim();
+
+            if (name.isEmpty() || name.contains("|")) {
+                System.out.println("Invalid name.");
+                return;
+            }
+
+            // Demonstrate String operations.
+            System.out.println("\nWelcome, " + name.toUpperCase() + "!");
+            System.out.println("Name length: " + name.length());
+
+            if (name.length() >= 2) {
+                System.out.println("First two characters: "
+                        + name.substring(0, 2));
+            }
+
+            System.out.println("Name contains 'a': "
+                    + name.toLowerCase().contains("a"));
+
+            // Demonstrate equals() versus ==.
+            String word1 = new String("Java");
+            String word2 = new String("Java");
+
+            System.out.println("\nString comparison demonstration:");
+            System.out.println("word1 == word2: " + (word1 == word2));
+            System.out.println("word1.equals(word2): "
+                    + word1.equals(word2));
+
+            // Sort questions using Comparable.
+            Collections.sort(questions);
+
+            int score = conductQuiz(sc, questions);
+
+            Result result = new Result(name, score, questions.size());
+
+            saveResult(result);
+
+            System.out.println("\n========== QUIZ RESULT ==========");
+            System.out.println("Student: " + name);
+            System.out.println("Score: " + score + "/" + questions.size());
+
+            showLeaderboard();
+            searchResult(sc);
+        }
+    }
+
+    // Create a sample question file if it does not exist.
+    static void createQuestionFile() {
+
+        if (Files.exists(questionFile)) {
+            return;
+        }
+
+        List<String> sampleQuestions = Arrays.asList(
+            "Easy|What is the length of the string JAVA?|4",
+            "Easy|Which method compares String values?|equals",
+            "Medium|Which class modifies strings efficiently?|StringBuilder",
+            "Medium|Which method splits a string into parts?|split",
+            "Hard|Which class represents a file path?|Path"
+        );
+
+        try {
+            Files.write(questionFile, sampleQuestions);
+            System.out.println("Sample questions.txt created.");
+        } catch (IOException e) {
+            System.out.println("Error creating question file: "
+                    + e.getMessage());
+        }
+    }
+
+    // Read and parse the question file.
+    static List<Question> loadQuestions() {
+
+        List<Question> questions = new ArrayList<>();
+
+        try {
+            // Reads the whole text file into a list of lines.
+            List<String> lines = Files.readAllLines(questionFile);
+
+            for (String line : lines) {
+
+                line = line.trim();
+
+                if (line.isEmpty()) {
+                    continue;
+                }
+
+                String[] data = line.split("\\|", 3);
+
+                if (data.length != 3) {
+                    System.out.println("Skipping malformed line: " + line);
+                    continue;
+                }
+
+                String level = data[0].trim();
+                String question = data[1].trim();
+                String answer = data[2].trim();
+
+                if (question.isEmpty() || answer.isEmpty()) {
+                    System.out.println("Skipping incomplete question.");
+                    continue;
+                }
+
+                if (!level.equalsIgnoreCase("Easy")
+                        && !level.equalsIgnoreCase("Medium")
+                        && !level.equalsIgnoreCase("Hard")) {
+                    System.out.println("Skipping invalid difficulty: " + level);
+                    continue;
+                }
+
+                questions.add(new Question(level, question, answer));
+            }
+
+        } catch (IOException e) {
+            System.out.println("Error reading questions: " + e.getMessage());
+        }
+
+        return questions;
+    }
+
+    // Conduct the adaptive quiz without repeating questions.
+    static int conductQuiz(Scanner sc, List<Question> questions) {
+
+        List<Question> remaining = new ArrayList<>(questions);
+        int score = 0;
+        String difficulty = "Easy";
+
+        System.out.println("\nAnswer the following questions.");
+        System.out.println("Correct answer = higher difficulty.");
+        System.out.println("Wrong answer = lower difficulty.");
+
+        for (int i = 0; i < questions.size(); i++) {
+
+            Question selected = null;
+
+            // Search for an unanswered question at the current difficulty.
+            for (Question q : remaining) {
+                if (q.difficulty.equalsIgnoreCase(difficulty)) {
+                    selected = q;
+                    break;
+                }
+            }
+
+            // If none are available, choose the next remaining question.
+            if (selected == null) {
+                selected = remaining.get(0);
+            }
+
+            remaining.remove(selected);
+
+            System.out.println("\nQuestion " + (i + 1)
+                    + " [" + selected.difficulty + "]");
+            System.out.println(selected.question);
+            System.out.print("Your answer: ");
+
+            String userAnswer = sc.nextLine().trim();
+
+            if (userAnswer.equalsIgnoreCase(selected.answer)) {
+                System.out.println("Correct answer!");
+                score++;
+
+                if (difficulty.equalsIgnoreCase("Easy")) {
+                    difficulty = "Medium";
+                } else {
+                    difficulty = "Hard";
+                }
+
+            } else {
+                System.out.println("Incorrect!");
+                System.out.println("Correct answer: " + selected.answer);
+
+                if (difficulty.equalsIgnoreCase("Hard")) {
+                    difficulty = "Medium";
+                } else {
+                    difficulty = "Easy";
+                }
+            }
+        }
+
+        return score;
+    }
+
+    // Append a result so it remains saved across program runs.
+    static void saveResult(Result result) {
+
+        try (BufferedWriter writer = Files.newBufferedWriter(
+                resultFile,
+                StandardOpenOption.CREATE,
+                StandardOpenOption.APPEND)) {
+
+            writer.write(result.name + " | "
+                    + result.score + " | " + result.total);
+            writer.newLine();
+
+            System.out.println("Result saved successfully.");
+
+        } catch (IOException e) {
+            System.out.println("Error saving result: " + e.getMessage());
+        }
+    }
+
+    // Read saved results line by line and display a leaderboard.
+    static void showLeaderboard() {
+
+        List<Result> results = new ArrayList<>();
+
+        if (!Files.exists(resultFile)) {
+            return;
+        }
+
+        try (BufferedReader reader =
+                Files.newBufferedReader(resultFile)) {
+
+            String line;
+
+            while ((line = reader.readLine()) != null) {
+
+                String[] data = line.split("\\|", 3);
+
+                if (data.length != 3) {
+                    System.out.println("Skipping malformed result: " + line);
+                    continue;
+                }
+
+                try {
+                    String name = data[0].trim();
+                    int score = Integer.parseInt(data[1].trim());
+                    int total = Integer.parseInt(data[2].trim());
+
+                    if (name.isEmpty() || total <= 0
+                            || score < 0 || score > total) {
+                        System.out.println("Skipping invalid result.");
+                        continue;
+                    }
+
+                    results.add(new Result(name, score, total));
+
+                } catch (NumberFormatException e) {
+                    System.out.println("Skipping invalid score: " + line);
+                }
+            }
+
+        } catch (IOException e) {
+            System.out.println("Error reading results: " + e.getMessage());
+        }
+
+        // Sort by score in descending order using Comparator.
+        Collections.sort(results,
+                Comparator.comparingInt((Result r) -> r.score).reversed());
+
+        System.out.println("\n========== LEADERBOARD ==========");
+
+        StringBuilder report = new StringBuilder();
+        report.append("ADAPTIVE QUIZ LEADERBOARD\n");
+
+        for (Result r : results) {
+            String entry = r.name + " - " + r.score + "/" + r.total;
+            System.out.println(entry);
+            report.append(entry).append(System.lineSeparator());
+        }
+
+        // Write the complete report to a file.
+        try {
+            Files.writeString(reportFile, report.toString());
+        } catch (IOException e) {
+            System.out.println("Error writing report: " + e.getMessage());
+        }
+    }
+
+    // Search for a student's saved result.
+    static void searchResult(Scanner sc) {
+
+        if (!Files.exists(resultFile)) {
+            return;
+        }
+
+        List<String> names = new ArrayList<>();
+
+        try (BufferedReader reader =
+                Files.newBufferedReader(resultFile)) {
+
+            String line;
+
+            while ((line = reader.readLine()) != null) {
+                String[] data = line.split("\\|", 3);
+
+                if (data.length == 3) {
+                    names.add(data[0].trim());
+                }
+            }
+
+        } catch (IOException e) {
+            System.out.println("Error searching results: " + e.getMessage());
+            return;
+        }
+
+        System.out.print("\nEnter a student name to search: ");
+        String searchName = sc.nextLine().trim();
+
+        boolean found = false;
+
+        // Value-based search using equalsIgnoreCase().
+        for (String savedName : names) {
+            if (savedName.equalsIgnoreCase(searchName)) {
+                System.out.println("Student found: " + savedName);
+                found = true;
+            }
+        }
+
+        if (!found) {
+            System.out.println("Student not found.");
+        }
+
+        // Demonstrate Arrays.sort() and Arrays.binarySearch().
+        String[] sortedNames = names.stream()
+                .map(String::toLowerCase)
+                .distinct()
+                .toArray(String[]::new);
+
+        Arrays.sort(sortedNames);
+
+        int position = Arrays.binarySearch(
+                sortedNames, searchName.toLowerCase());
+
+        if (position >= 0) {
+            System.out.println("Binary search: name exists in saved records.");
+        } else {
+            System.out.println("Binary search: name does not exist.");
+        }
+    }
+}
